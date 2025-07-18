@@ -1,0 +1,23 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: project-risk-analyzer
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  # Disable JPA auto-configuration since we don't need a database
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+
+jira:
+  url: ${JIRA_URL:https://your-domain.atlassian.net}
+  username: ${JIRA_USERNAME:your-email@example.com}
+  password: ${JIRA_PASSWORD:your-jira-password}
+
+logging:
+  level:
+    com.projectjam: DEBUG
+    org.springframework.web: DEBUG 

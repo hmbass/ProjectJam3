@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - JIRA_URL=${JIRA_URL}
+      - JIRA_USERNAME=${JIRA_USERNAME}
+      - JIRA_PASSWORD=${JIRA_PASSWORD}
+    volumes:
+      - ./backend/logs:/app/logs
+    networks:
+      - project-risk-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - JIRA_URL=${JIRA_URL}
+    depends_on:
+      - backend
+    networks:
+      - project-risk-network
+
+networks:
+  project-risk-network:
+    driver: bridge 

@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 
 @Slf4j
 @Service
@@ -44,8 +45,11 @@ public class JiraService {
             String jql = String.format("project = %s AND status != Closed ORDER BY created DESC", projectKey);
             String auth = Base64.getEncoder().encodeToString((username + ":" + password).getBytes());
             
+            // 기본 필드 요청 (WBSGantt 필드는 선택적으로 추가)
+            String fieldsParam = "summary,description,status,assignee,priority,created,updated,duedate,timetracking,issuetype,cf10332,cf10333";
+            
             String response = webClient.get()
-                    .uri(jiraUrl + "/rest/api/2/search?jql=" + jql + "&maxResults=1000")
+                    .uri(jiraUrl + "/rest/api/2/search?jql=" + jql + "&fields=" + fieldsParam + "&maxResults=1000")
                     .header("Authorization", "Basic " + auth)
                     .header("Content-Type", "application/json")
                     .retrieve()
@@ -174,20 +178,22 @@ public class JiraService {
         JsonNode fields = issue.get("fields");
         
         return JiraTask.builder()
-                .id(issue.get("id").asText())
-                .key(issue.get("key").asText())
+                .id(issue.get("id") != null ? issue.get("id").asText() : null)
+                .key(issue.get("key") != null ? issue.get("key").asText() : null)
                 .summary(fields.get("summary") != null ? fields.get("summary").asText() : null)
                 .description(fields.get("description") != null ? fields.get("description").asText() : null)
-                .status(fields.get("status") != null ? fields.get("status").get("name").asText() : null)
-                .assignee(fields.get("assignee") != null ? fields.get("assignee").get("name").asText() : null)
-                .priority(fields.get("priority") != null ? fields.get("priority").get("name").asText() : null)
+                .status(fields.get("status") != null && fields.get("status").get("name") != null ? fields.get("status").get("name").asText() : null)
+                .assignee(fields.get("assignee") != null && fields.get("assignee").get("name") != null ? fields.get("assignee").get("name").asText() : null)
+                .priority(fields.get("priority") != null && fields.get("priority").get("name") != null ? fields.get("priority").get("name").asText() : null)
                 .created(parseDateTime(fields.get("created")))
                 .updated(parseDateTime(fields.get("updated")))
                 .dueDate(parseDateTime(fields.get("duedate")))
+                .wbsStartDate(parseDateTime(fields.get("cf10332"))) // WBSGantt 시작일
+                .wbsFinishDate(parseDateTime(fields.get("cf10333"))) // WBSGantt 완료일
                 .originalEstimate(parseTimeTracking(fields.get("timetracking"), "originalEstimateSeconds"))
                 .timeSpent(parseTimeTracking(fields.get("timetracking"), "timeSpentSeconds"))
                 .remainingEstimate(parseTimeTracking(fields.get("timetracking"), "remainingEstimateSeconds"))
-                .issueType(fields.get("issuetype") != null ? fields.get("issuetype").get("name").asText() : null)
+                .issueType(fields.get("issuetype") != null && fields.get("issuetype").get("name") != null ? fields.get("issuetype").get("name").asText() : null)
                 .build();
     }
     
@@ -218,5 +224,26 @@ public class JiraService {
         }
         JsonNode value = timeTracking.get(field);
         return value != null ? value.asInt() : null;
+    }
+
+    private double calculateScheduleRisk(List<Double> projectDurations) {
+        DescriptiveStatistics stats = new DescriptiveStatistics(projectDurations.stream().mapToDouble(d -> d).toArray());
+        double mean = stats.getMean();
+        double p80 = stats.getPercentile(80);
+        
+        // P80이 평균보다 20% 이상 클 때 리스크로 판단
+        return Math.min(1.0, Math.max(0.0, (p80 - mean) / mean));
+    }
+
+    private double calculateResourceRisk(List<JiraTask> tasks) {
+        // 할당되지 않은 태스크 비율
+        long unassignedCount = tasks.stream().filter(t -> t.getAssignee() == null).count();
+        return (double) unassignedCount / tasks.size();
+    }
+
+    private double calculateScopeRisk(List<JiraTask> tasks) {
+        // 추정치가 없는 태스크 비율
+        long noEstimateCount = tasks.stream().filter(t -> t.getOriginalEstimate() == null).count();
+        return (double) noEstimateCount / tasks.size();
     }
 } 

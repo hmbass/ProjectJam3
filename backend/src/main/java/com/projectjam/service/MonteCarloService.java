@@ -89,13 +89,18 @@ public class MonteCarloService {
     }
     
     private double simulateTaskDuration(JiraTask task) {
-        // 태스크의 원래 추정치를 기준으로 삼각분포 사용
-        double originalEstimate = task.getOriginalEstimate() != null ? task.getOriginalEstimate() / 3600.0 : 8.0; // 시간 단위로 변환
+        // WBSGantt 필드를 우선적으로 사용하여 태스크 기간 계산
+        double estimatedDuration = calculateTaskDurationFromWBS(task);
+        
+        // WBSGantt 정보가 없으면 원래 추정치 사용
+        if (estimatedDuration <= 0) {
+            estimatedDuration = task.getOriginalEstimate() != null ? task.getOriginalEstimate() / 3600.0 : 8.0;
+        }
         
         // 삼각분포 파라미터 설정 (최적, 최대, 최소)
-        double optimistic = originalEstimate * 0.7; // 30% 단축 가능
-        double mostLikely = originalEstimate;
-        double pessimistic = originalEstimate * 2.0; // 100% 초과 가능
+        double optimistic = estimatedDuration * 0.7; // 30% 단축 가능
+        double mostLikely = estimatedDuration;
+        double pessimistic = estimatedDuration * 2.0; // 100% 초과 가능
         
         // 우선순위에 따른 리스크 조정
         if ("High".equals(task.getPriority())) {
@@ -106,6 +111,22 @@ public class MonteCarloService {
         
         TriangularDistribution distribution = new TriangularDistribution(optimistic, mostLikely, pessimistic);
         return distribution.sample();
+    }
+    
+    private double calculateTaskDurationFromWBS(JiraTask task) {
+        // WBSGantt 시작일과 완료일이 모두 있는 경우
+        if (task.getWbsStartDate() != null && task.getWbsFinishDate() != null) {
+            // 두 날짜 간의 차이를 시간 단위로 계산
+            long durationInHours = java.time.Duration.between(task.getWbsStartDate(), task.getWbsFinishDate()).toHours();
+            
+            // 음수이거나 너무 작은 값은 무시
+            if (durationInHours > 0 && durationInHours <= 8760) { // 1년 이하
+                return durationInHours;
+            }
+        }
+        
+        // WBSGantt 정보가 없거나 유효하지 않은 경우 0 반환
+        return 0.0;
     }
     
     private List<String> identifyCriticalPath(List<JiraTask> tasks, Map<String, List<Double>> taskDurations) {
@@ -127,9 +148,14 @@ public class MonteCarloService {
         for (JiraTask task : tasks) {
             List<Double> durations = taskDurations.get(task.getKey());
             if (durations != null && !durations.isEmpty()) {
-                // 원래 추정치 대비 완료 확률 계산
-                double originalEstimate = task.getOriginalEstimate() != null ? task.getOriginalEstimate() / 3600.0 : 8.0;
-                long onTimeCount = durations.stream().filter(d -> d <= originalEstimate).count();
+                // WBSGantt 기간 또는 원래 추정치 대비 완료 확률 계산
+                double estimatedDuration = calculateTaskDurationFromWBS(task);
+                if (estimatedDuration <= 0) {
+                    estimatedDuration = task.getOriginalEstimate() != null ? task.getOriginalEstimate() / 3600.0 : 8.0;
+                }
+                
+                final double finalEstimatedDuration = estimatedDuration;
+                long onTimeCount = durations.stream().filter(d -> d <= finalEstimatedDuration).count();
                 double probability = (double) onTimeCount / durations.size();
                 probabilities.put(task.getKey(), probability);
             }
@@ -276,10 +302,13 @@ public class MonteCarloService {
                     riskLevel = "높음";
                 }
                 
-                // 원래 추정치 기반으로 낙관적/비관적 추정 계산
-                double originalEstimate = task.getOriginalEstimate() != null ? task.getOriginalEstimate() / 3600.0 : 8.0;
-                double optimisticDuration = originalEstimate * 0.7;
-                double pessimisticDuration = originalEstimate * 2.0;
+                // WBSGantt 기간 또는 원래 추정치 기반으로 낙관적/비관적 추정 계산
+                double estimatedDuration = calculateTaskDurationFromWBS(task);
+                if (estimatedDuration <= 0) {
+                    estimatedDuration = task.getOriginalEstimate() != null ? task.getOriginalEstimate() / 3600.0 : 8.0;
+                }
+                double optimisticDuration = estimatedDuration * 0.7;
+                double pessimisticDuration = estimatedDuration * 2.0;
                 
                 taskAnalyses.put(task.getKey(), SimulationResult.TaskAnalysis.builder()
                         .taskKey(task.getKey())

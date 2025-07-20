@@ -22,6 +22,8 @@ public class JiraTask {
     private LocalDateTime created;
     private LocalDateTime updated;
     private LocalDateTime dueDate;
+    private LocalDateTime wbsStartDate; // WBSGantt 시작일 (cf10332)
+    private LocalDateTime wbsFinishDate; // WBSGantt 완료일 (cf10333)
     private Integer originalEstimate; // seconds
     private Integer timeSpent; // seconds
     private Integer remainingEstimate; // seconds

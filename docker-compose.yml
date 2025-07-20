@@ -14,6 +14,11 @@ services:
       - ./backend/logs:/app/logs
     networks:
       - project-risk-network
+    # 내부 회사 네트워크 접근을 위한 설정
+    extra_hosts:
+      - "jira-digit.amorepacific.com:172.28.2.211"
+    # 호스트 네트워크 사용 (대안)
+    # network_mode: host
 
   frontend:
     build: ./frontend

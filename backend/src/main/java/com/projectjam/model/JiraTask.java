@@ -22,12 +22,14 @@ public class JiraTask {
     private LocalDateTime created;
     private LocalDateTime updated;
     private LocalDateTime dueDate;
-    private LocalDateTime wbsStartDate; // WBSGantt 시작일 (cf10332)
-    private LocalDateTime wbsFinishDate; // WBSGantt 완료일 (cf10333)
     private Integer originalEstimate; // seconds
     private Integer timeSpent; // seconds
     private Integer remainingEstimate; // seconds
     private String epicLink;
     private String sprint;
     private String issueType;
+    
+    // 커스텀 필드들
+    private String cf10332; // 커스텀 필드 10332
+    private String cf10333; // 커스텀 필드 10333
 } 

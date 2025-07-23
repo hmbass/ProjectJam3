@@ -8,6 +8,8 @@ import org.apache.commons.math3.distribution.TriangularDistribution;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -89,11 +91,18 @@ public class MonteCarloService {
     }
     
     private double simulateTaskDuration(JiraTask task) {
-        // WBSGantt 필드를 우선적으로 사용하여 태스크 기간 계산
-        double estimatedDuration = calculateTaskDurationFromWBS(task);
+        // cf10332 (시작일)와 cf10333 (종료일)을 사용하여 기간 계산
+        LocalDateTime startDate = parseCustomDateTime(task.getCf10332());
+        LocalDateTime endDate = parseCustomDateTime(task.getCf10333());
         
-        // WBSGantt 정보가 없으면 원래 추정치 사용
-        if (estimatedDuration <= 0) {
+        double estimatedDuration = 8.0; // 기본값
+        
+        if (startDate != null && endDate != null && endDate.isAfter(startDate)) {
+            // 두 날짜 사이의 시간 차이를 시간 단위로 계산
+            long hoursBetween = java.time.Duration.between(startDate, endDate).toHours();
+            estimatedDuration = Math.max(1.0, hoursBetween); // 최소 1시간
+        } else {
+            // 커스텀 필드가 없으면 기존 로직 사용
             estimatedDuration = task.getOriginalEstimate() != null ? task.getOriginalEstimate() / 3600.0 : 8.0;
         }
         
@@ -113,20 +122,40 @@ public class MonteCarloService {
         return distribution.sample();
     }
     
-    private double calculateTaskDurationFromWBS(JiraTask task) {
-        // WBSGantt 시작일과 완료일이 모두 있는 경우
-        if (task.getWbsStartDate() != null && task.getWbsFinishDate() != null) {
-            // 두 날짜 간의 차이를 시간 단위로 계산
-            long durationInHours = java.time.Duration.between(task.getWbsStartDate(), task.getWbsFinishDate()).toHours();
-            
-            // 음수이거나 너무 작은 값은 무시
-            if (durationInHours > 0 && durationInHours <= 8760) { // 1년 이하
-                return durationInHours;
-            }
+    private LocalDateTime parseCustomDateTime(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            return null;
         }
         
-        // WBSGantt 정보가 없거나 유효하지 않은 경우 0 반환
-        return 0.0;
+        try {
+            // 다양한 날짜 형식 시도
+            String[] patterns = {
+                "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+                "yyyy-MM-dd'T'HH:mm:ssZ",
+                "yyyy-MM-dd'T'HH:mm:ss",
+                "yyyy-MM-dd HH:mm:ss",
+                "yyyy-MM-dd"
+            };
+            
+            for (String pattern : patterns) {
+                try {
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern(pattern);
+                    if (pattern.contains("Z")) {
+                        return LocalDateTime.parse(dateStr, formatter);
+                    } else {
+                        return LocalDateTime.parse(dateStr, formatter);
+                    }
+                } catch (Exception e) {
+                    // 다음 패턴 시도
+                    continue;
+                }
+            }
+            
+            // ISO 형식 시도
+            return LocalDateTime.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (Exception e) {
+            return null;
+        }
     }
     
     private List<String> identifyCriticalPath(List<JiraTask> tasks, Map<String, List<Double>> taskDurations) {
@@ -148,14 +177,22 @@ public class MonteCarloService {
         for (JiraTask task : tasks) {
             List<Double> durations = taskDurations.get(task.getKey());
             if (durations != null && !durations.isEmpty()) {
-                // WBSGantt 기간 또는 원래 추정치 대비 완료 확률 계산
-                double estimatedDuration = calculateTaskDurationFromWBS(task);
-                if (estimatedDuration <= 0) {
-                    estimatedDuration = task.getOriginalEstimate() != null ? task.getOriginalEstimate() / 3600.0 : 8.0;
+                // cf10332와 cf10333을 사용하여 예상 기간 계산
+                LocalDateTime startDate = parseCustomDateTime(task.getCf10332());
+                LocalDateTime endDate = parseCustomDateTime(task.getCf10333());
+                
+                double expectedDuration = 8.0; // 기본값
+                
+                final double finalExpectedDuration;
+                if (startDate != null && endDate != null && endDate.isAfter(startDate)) {
+                    long hoursBetween = java.time.Duration.between(startDate, endDate).toHours();
+                    finalExpectedDuration = Math.max(1.0, hoursBetween);
+                } else {
+                    // 커스텀 필드가 없으면 기존 로직 사용
+                    finalExpectedDuration = task.getOriginalEstimate() != null ? task.getOriginalEstimate() / 3600.0 : 8.0;
                 }
                 
-                final double finalEstimatedDuration = estimatedDuration;
-                long onTimeCount = durations.stream().filter(d -> d <= finalEstimatedDuration).count();
+                long onTimeCount = durations.stream().filter(d -> d <= finalExpectedDuration).count();
                 double probability = (double) onTimeCount / durations.size();
                 probabilities.put(task.getKey(), probability);
             }
@@ -302,11 +339,18 @@ public class MonteCarloService {
                     riskLevel = "높음";
                 }
                 
-                // WBSGantt 기간 또는 원래 추정치 기반으로 낙관적/비관적 추정 계산
-                double estimatedDuration = calculateTaskDurationFromWBS(task);
-                if (estimatedDuration <= 0) {
+                // cf10332와 cf10333을 사용하여 예상 기간 계산
+                LocalDateTime startDate = parseCustomDateTime(task.getCf10332());
+                LocalDateTime endDate = parseCustomDateTime(task.getCf10333());
+                
+                double estimatedDuration = 8.0; // 기본값
+                if (startDate != null && endDate != null && endDate.isAfter(startDate)) {
+                    long hoursBetween = java.time.Duration.between(startDate, endDate).toHours();
+                    estimatedDuration = Math.max(1.0, hoursBetween);
+                } else {
                     estimatedDuration = task.getOriginalEstimate() != null ? task.getOriginalEstimate() / 3600.0 : 8.0;
                 }
+                
                 double optimisticDuration = estimatedDuration * 0.7;
                 double pessimisticDuration = estimatedDuration * 2.0;
                 

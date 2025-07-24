@@ -89,7 +89,7 @@ public class RiskAnalysisController {
             // Monte Carlo 시뮬레이션 실행
             SimulationResult result = monteCarloService.runSimulation(tasks, numSimulations);
             
-            log.info("Simulation completed for project: {} with {} tasks", projectKey, tasks.size());
+
             
             return ResponseEntity.ok(result);
             

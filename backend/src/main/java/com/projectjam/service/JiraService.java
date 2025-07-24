@@ -48,9 +48,7 @@ public class JiraService {
             // 필요한 필드들을 요청 (커스텀 필드 포함)
             String fieldsParam = "summary,description,status,assignee,priority,created,updated,duedate,timetracking,issuetype,epic,fixVersions,sprint,customfield_10332,customfield_10333";
             String apiUrl = jiraUrl + "/rest/api/2/search?jql=" + jql + "&fields=" + fieldsParam + "&maxResults=1000";
-            log.info("🔗 Calling Jira API: {}", apiUrl);
-            log.info("📋 JQL Query: {}", jql);
-            log.info("📝 Requested fields: {}", fieldsParam);
+
             
             String response = webClient.get()
                     .uri(apiUrl)
@@ -63,22 +61,20 @@ public class JiraService {
             JsonNode root = objectMapper.readTree(response);
             JsonNode issues = root.get("issues");
             
-            log.info("✅ Jira API response received. Total issues: {}", issues.size());
+
             
             List<JiraTask> tasks = new ArrayList<>();
             for (JsonNode issue : issues) {
                 JiraTask task = convertToJiraTask(issue);
                 if (task != null) {
                     tasks.add(task);
-                } else {
-                    log.warn("⚠️ Skipping null task from issue: {}", issue.get("key"));
                 }
             }
             
-            log.info("🎯 Successfully converted {} tasks for project: {}", tasks.size(), projectKey);
+
             return tasks;
         } catch (Exception e) {
-            log.error("❌ Error fetching tasks from Jira for project: {}", projectKey, e);
+            log.error("Error fetching tasks from Jira for project: {}", projectKey, e);
             throw new RuntimeException("Failed to fetch tasks from Jira", e);
         }
     }
@@ -92,9 +88,7 @@ public class JiraService {
             String fieldsParam = "key,summary";
             String apiUrl = jiraUrl + "/rest/api/2/search?jql=" + jql + "&fields=" + fieldsParam + "&maxResults=1000";
             
-            log.info("🔗 Calling Jira Lightweight API: {}", apiUrl);
-            log.info("📋 JQL Query: {}", jql);
-            log.info("📝 Requested fields: {}", fieldsParam);
+
             
             String response = webClient.get()
                     .uri(apiUrl)
@@ -107,7 +101,7 @@ public class JiraService {
             JsonNode root = objectMapper.readTree(response);
             JsonNode issues = root.get("issues");
             
-            log.info("✅ Jira Lightweight API response received. Total issues: {}", issues.size());
+
             
             List<JiraTask> tasks = new ArrayList<>();
             for (JsonNode issue : issues) {
@@ -118,10 +112,10 @@ public class JiraService {
                         .build());
             }
             
-            log.info("🎯 Successfully fetched {} lightweight tasks for project: {}", tasks.size(), projectKey);
+
             return tasks;
         } catch (Exception e) {
-            log.error("❌ Error fetching lightweight tasks from Jira for project: {}", projectKey, e);
+            log.error("Error fetching lightweight tasks from Jira for project: {}", projectKey, e);
             throw new RuntimeException("Failed to fetch lightweight tasks from Jira", e);
         }
     }
@@ -137,8 +131,7 @@ public class JiraService {
             }
             
             String apiUrl = jiraUrl + "/rest/api/2/project?maxResults=50";
-            log.info("🔗 Calling Jira Projects API: {}", apiUrl);
-            log.info("🔍 Searching for projects with term: '{}'", searchTerm);
+
             
             String response = webClient.get()
                     .uri(apiUrl)
@@ -149,7 +142,6 @@ public class JiraService {
                     .block();
             
             JsonNode projects = objectMapper.readTree(response);
-            log.info("✅ Jira Projects API response received. Total projects: {}", projects.size());
             
             List<ProjectInfo> matchingProjects = new ArrayList<>();
             
@@ -166,10 +158,10 @@ public class JiraService {
                 }
             }
             
-            log.info("🎯 Found {} projects matching '{}'", matchingProjects.size(), searchTerm);
+
             return matchingProjects;
         } catch (Exception e) {
-            log.error("❌ Error searching projects from Jira", e);
+            log.error("Error searching projects from Jira", e);
             throw new RuntimeException("Failed to search projects from Jira", e);
         }
     }
@@ -179,7 +171,7 @@ public class JiraService {
             String auth = Base64.getEncoder().encodeToString((username + ":" + password).getBytes());
             
             String apiUrl = jiraUrl + "/rest/api/2/project?maxResults=1000";
-            log.info("🔗 Calling Jira Projects API: {}", apiUrl);
+
             
             String response = webClient.get()
                     .uri(apiUrl)
@@ -190,7 +182,7 @@ public class JiraService {
                     .block();
             
             JsonNode projects = objectMapper.readTree(response);
-            log.info("✅ Jira Projects API response received. Total projects: {}", projects.size());
+
             
             List<String> projectKeys = new ArrayList<>();
             
@@ -198,10 +190,10 @@ public class JiraService {
                 projectKeys.add(project.get("key").asText());
             }
             
-            log.info("🎯 Successfully fetched {} projects from Jira", projectKeys.size());
+
             return projectKeys;
         } catch (Exception e) {
-            log.error("❌ Error fetching projects from Jira", e);
+            log.error("Error fetching projects from Jira", e);
             throw new RuntimeException("Failed to fetch projects from Jira", e);
         }
     }
@@ -210,7 +202,6 @@ public class JiraService {
         try {
             JsonNode fields = issue.get("fields");
             if (fields == null) {
-                log.warn("⚠️ Fields node is null for issue: {}", issue);
                 return null;
             }
             
@@ -218,16 +209,15 @@ public class JiraService {
             JsonNode idNode = issue.get("id");
             
             if (keyNode == null) {
-                log.warn("⚠️ Key node is null for issue: {}", issue);
                 return null;
             }
             
             String taskKey = keyNode.asText();
             String taskId = idNode != null ? idNode.asText() : taskKey;
             
-            log.debug("🔄 Converting Jira issue to JiraTask: {}", taskKey);
+
             
-            // 각 필드별 상세 로그
+            // 각 필드별 데이터 추출
             String summary = getFieldText(fields, "summary");
             String description = getFieldText(fields, "description");
             String status = getNestedFieldText(fields, "status", "name");
@@ -244,24 +234,6 @@ public class JiraService {
             // 커스텀 필드들 가져오기
             String cf10332 = getCustomFieldValue(fields, "customfield_10332");
             String cf10333 = getCustomFieldValue(fields, "customfield_10333");
-            
-            // 필드별 로그 출력
-            log.debug("📋 Task Fields for {}: ", taskKey);
-            log.debug("   - ID: {}", taskId);
-            log.debug("   - Summary: {}", summary != null ? summary.substring(0, Math.min(50, summary.length())) + "..." : "null");
-            log.debug("   - Description: {}", description != null ? "present" : "null");
-            log.debug("   - Status: {}", status);
-            log.debug("   - Assignee: {}", assignee);
-            log.debug("   - Priority: {}", priority);
-            log.debug("   - Created: {}", created);
-            log.debug("   - Updated: {}", updated);
-            log.debug("   - Due Date: {}", dueDate);
-            log.debug("   - Original Estimate: {} seconds ({} hours)", originalEstimate, originalEstimate != null ? originalEstimate / 3600.0 : "null");
-            log.debug("   - Time Spent: {} seconds ({} hours)", timeSpent, timeSpent != null ? timeSpent / 3600.0 : "null");
-            log.debug("   - Remaining Estimate: {} seconds ({} hours)", remainingEstimate, remainingEstimate != null ? remainingEstimate / 3600.0 : "null");
-            log.debug("   - Issue Type: {}", issueType);
-            log.debug("   - CF10332: {}", cf10332);
-            log.debug("   - CF10333: {}", cf10333);
             
             JiraTask task = JiraTask.builder()
                     .id(taskId)
@@ -282,15 +254,11 @@ public class JiraService {
                     .cf10333(cf10333)
                     .build();
             
-            log.debug("✅ Successfully converted task: {} (Status: {}, Assignee: {}, Priority: {})", 
-                    taskKey, 
-                    task.getStatus(), 
-                    task.getAssignee(), 
-                    task.getPriority());
+
             
             return task;
         } catch (Exception e) {
-            log.error("❌ Error converting Jira issue to JiraTask: {}", issue, e);
+            log.error("Error converting Jira issue to JiraTask: {}", issue, e);
             return null;
         }
     }
@@ -340,8 +308,6 @@ public class JiraService {
         }
         String dateStr = dateNode.asText();
         
-        log.debug("📅 Parsing date: {}", dateStr);
-        
         // 타임존 정보가 포함된 경우 제거 (예: 2025-07-16T10:56:00.000+0900 -> 2025-07-16T10:56:00.000)
         if (dateStr.contains("+") || dateStr.contains("Z")) {
             // + 또는 Z 이전까지만 사용
@@ -351,30 +317,23 @@ public class JiraService {
             }
             if (timezoneIndex != -1) {
                 dateStr = dateStr.substring(0, timezoneIndex);
-                log.debug("🕐 Removed timezone info, parsed date: {}", dateStr);
             }
         }
         
         try {
-            LocalDateTime parsedDate = LocalDateTime.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            log.debug("✅ Successfully parsed date: {}", parsedDate);
-            return parsedDate;
+            return LocalDateTime.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         } catch (Exception e) {
-            log.error("❌ Failed to parse date: {}", dateStr, e);
+            log.error("Failed to parse date: {}", dateStr, e);
             return null;
         }
     }
     
     private Integer parseTimeTracking(JsonNode timeTracking, String field) {
         if (timeTracking == null || timeTracking.isNull()) {
-            log.debug("⏰ Time tracking is null for field: {}", field);
             return null;
         }
         JsonNode value = timeTracking.get(field);
-        Integer result = value != null ? value.asInt() : null;
-        log.debug("⏰ Time tracking field '{}': {} seconds ({} hours)", 
-                field, result, result != null ? result / 3600.0 : "null");
-        return result;
+        return value != null ? value.asInt() : null;
     }
 
     private double calculateScheduleRisk(List<Double> projectDurations) {

@@ -25,7 +25,7 @@ public class MonteCarloService {
             numSimulations = DEFAULT_SIMULATIONS;
         }
         
-        log.info("Starting Monte Carlo simulation with {} iterations for {} tasks", numSimulations, tasks.size());
+
         
         List<Double> projectDurations = new ArrayList<>();
         Map<String, List<Double>> taskDurations = new HashMap<>();
@@ -65,6 +65,9 @@ public class MonteCarloService {
         // 태스크별 상세 분석 생성
         Map<String, SimulationResult.TaskAnalysis> taskAnalyses = generateTaskAnalyses(tasks, taskDurations, taskCompletionProbabilities);
         
+        // 태스크별 상관관계 계산
+        Map<String, Map<String, Double>> taskCorrelations = calculateTaskCorrelations(taskDurations);
+        
         // 리스크 분석
         SimulationResult.RiskAnalysis riskAnalysis = analyzeRisks(tasks, projectDurations, taskDurations);
         
@@ -85,6 +88,7 @@ public class MonteCarloService {
                 .taskCompletionProbabilities(taskCompletionProbabilities)
                 .taskAnalyses(taskAnalyses)
                 .durationDistribution(projectDurations)
+                .taskCorrelations(taskCorrelations)
                 .riskAnalysis(riskAnalysis)
                 .overallAssessment(overallAssessment)
                 .build();
@@ -370,5 +374,59 @@ public class MonteCarloService {
         }
         
         return taskAnalyses;
+    }
+    
+    private Map<String, Map<String, Double>> calculateTaskCorrelations(Map<String, List<Double>> taskDurations) {
+        Map<String, Map<String, Double>> correlations = new HashMap<>();
+        List<String> taskKeys = new ArrayList<>(taskDurations.keySet());
+        
+        for (int i = 0; i < taskKeys.size(); i++) {
+            String task1 = taskKeys.get(i);
+            correlations.put(task1, new HashMap<>());
+            
+            for (int j = 0; j < taskKeys.size(); j++) {
+                String task2 = taskKeys.get(j);
+                
+                if (i == j) {
+                    // 자기 자신과의 상관관계는 1.0
+                    correlations.get(task1).put(task2, 1.0);
+                } else {
+                    // 두 태스크 간의 상관관계 계산
+                    double correlation = calculateCorrelation(taskDurations.get(task1), taskDurations.get(task2));
+                    correlations.get(task1).put(task2, correlation);
+                }
+            }
+        }
+        
+        return correlations;
+    }
+    
+    private double calculateCorrelation(List<Double> list1, List<Double> list2) {
+        if (list1.size() != list2.size() || list1.isEmpty()) {
+            return 0.0;
+        }
+        
+        int n = list1.size();
+        double sum1 = 0, sum2 = 0, sum1Sq = 0, sum2Sq = 0, pSum = 0;
+        
+        for (int i = 0; i < n; i++) {
+            double x = list1.get(i);
+            double y = list2.get(i);
+            
+            sum1 += x;
+            sum2 += y;
+            sum1Sq += x * x;
+            sum2Sq += y * y;
+            pSum += x * y;
+        }
+        
+        double num = pSum - (sum1 * sum2 / n);
+        double den = Math.sqrt((sum1Sq - sum1 * sum1 / n) * (sum2Sq - sum2 * sum2 / n));
+        
+        if (den == 0) {
+            return 0.0;
+        }
+        
+        return num / den;
     }
 } 

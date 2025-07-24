@@ -26,6 +26,7 @@ public class SimulationResult {
     private Map<String, Double> taskCompletionProbabilities;
     private Map<String, TaskAnalysis> taskAnalyses; // 태스크별 상세 분석
     private List<Double> durationDistribution;
+    private Map<String, Map<String, Double>> taskCorrelations; // 태스크별 상관관계
     private RiskAnalysis riskAnalysis;
     private String overallAssessment;
     

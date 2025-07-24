@@ -159,6 +159,9 @@ def display_results(result):
         )
     
     # 차트 섹션
+    st.subheader("📊 분석 차트")
+    
+    # 첫 번째 행: 히스토그램과 리스크 분석
     col1, col2 = st.columns(2)
     
     with col1:
@@ -166,6 +169,24 @@ def display_results(result):
     
     with col2:
         display_risk_analysis(result)
+    
+    # 두 번째 행: S-Curve와 Tornado 차트
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        display_s_curve(result)
+    
+    with col4:
+        display_tornado_chart(result)
+    
+    # 세 번째 행: 상관관계 히트맵과 민감도 분석
+    col5, col6 = st.columns(2)
+    
+    with col5:
+        display_correlation_heatmap(result)
+    
+    with col6:
+        display_sensitivity_analysis(result)
     
     # 크리티컬 패스
     st.subheader("🔗 크리티컬 패스")
@@ -351,6 +372,302 @@ def display_duration_distribution(result):
     - **P80 (주황선)**: 80% 확률로 달성 가능한 기간  
     - **P90 (빨간선)**: 90% 확률로 달성 가능한 기간
     - 분포가 오른쪽으로 치우칠수록 지연 위험이 높습니다
+    """)
+
+def display_s_curve(result):
+    """S-Curve (누적 분포 함수)를 표시합니다."""
+    st.subheader("📈 S-Curve (누적 분포 함수)")
+    
+    # 데이터 정렬
+    durations = sorted(result['durationDistribution'])
+    n = len(durations)
+    
+    # 누적 확률 계산
+    cumulative_prob = [(i + 1) / n * 100 for i in range(n)]
+    
+    # S-Curve 생성
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=durations,
+        y=cumulative_prob,
+        mode='lines',
+        name='S-Curve',
+        line=dict(color='blue', width=2),
+        fill='tonexty',
+        fillcolor='rgba(0, 100, 255, 0.1)'
+    ))
+    
+    # 주요 백분위수 라인 추가
+    p50_idx = int(n * 0.5)
+    p80_idx = int(n * 0.8)
+    p90_idx = int(n * 0.9)
+    
+    fig.add_vline(x=durations[p50_idx], line_dash="dash", line_color="green",
+                  annotation_text=f"P50: {durations[p50_idx]:.1f}h")
+    fig.add_vline(x=durations[p80_idx], line_dash="dash", line_color="orange",
+                  annotation_text=f"P80: {durations[p80_idx]:.1f}h")
+    fig.add_vline(x=durations[p90_idx], line_dash="dash", line_color="red",
+                  annotation_text=f"P90: {durations[p90_idx]:.1f}h")
+    
+    fig.update_layout(
+        title="프로젝트 완료 확률 S-Curve",
+        xaxis_title="시간 (시간)",
+        yaxis_title="완료 확률 (%)",
+        showlegend=False,
+        height=400,
+        margin=dict(l=50, r=50, t=80, b=50),
+        xaxis=dict(range=[min(durations), max(durations)]),
+        yaxis=dict(range=[0, 100])
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("""
+    **📈 S-Curve 설명:**
+    - S-Curve는 프로젝트 완료 확률을 시간에 따라 보여줍니다
+    - **X축**: 프로젝트 완료 시간 (시간)
+    - **Y축**: 해당 시간까지 완료할 확률 (%)
+    - **P50**: 50% 확률로 완료 가능한 시간
+    - **P80**: 80% 확률로 완료 가능한 시간
+    - **P90**: 90% 확률로 완료 가능한 시간
+    - 곡선이 가파를수록 예측 불확실성이 높습니다
+    """)
+
+def display_tornado_chart(result):
+    """Tornado 차트 (태스크별 영향도 분석)를 표시합니다."""
+    st.subheader("🌪️ Tornado 차트 (태스크별 영향도 분석)")
+    
+    # 태스크별 분석 데이터 추출
+    task_analyses = result.get('taskAnalyses', {})
+    
+    if not task_analyses:
+        st.info("태스크별 상세 분석 데이터가 없습니다.")
+        return
+    
+    # 태스크별 변동성 (표준편차/평균) 계산
+    task_impacts = []
+    for task_key, analysis in task_analyses.items():
+        if 'variability' in analysis and analysis['variability'] is not None:
+            task_impacts.append({
+                'task_key': task_key,
+                'variability': analysis['variability'],
+                'estimated_duration': analysis.get('estimatedDuration', 0),
+                'completion_probability': analysis.get('completionProbability', 0)
+            })
+    
+    if not task_impacts:
+        st.info("변동성 데이터가 충분하지 않습니다.")
+        return
+    
+    # 변동성 기준으로 정렬 (상위 10개)
+    task_impacts.sort(key=lambda x: x['variability'], reverse=True)
+    top_tasks = task_impacts[:10]
+    
+    # Tornado 차트 생성
+    fig = go.Figure()
+    
+    # 태스크별 막대 차트
+    task_names = [task['task_key'] for task in top_tasks]
+    variabilities = [task['variability'] * 100 for task in top_tasks]  # 퍼센트로 변환
+    
+    fig.add_trace(go.Bar(
+        x=variabilities,
+        y=task_names,
+        orientation='h',
+        marker_color='lightcoral',
+        name='변동성 (%)',
+        text=[f"{v:.1f}%" for v in variabilities],
+        textposition='auto'
+    ))
+    
+    fig.update_layout(
+        title="태스크별 변동성 영향도 (상위 10개)",
+        xaxis_title="변동성 (%)",
+        yaxis_title="태스크",
+        showlegend=False,
+        height=max(400, len(top_tasks) * 40),
+        margin=dict(l=50, r=50, t=80, b=50),
+        xaxis=dict(range=[0, max(variabilities) * 1.1])
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # 상세 정보 테이블
+    st.subheader("📋 상위 영향 태스크 상세 정보")
+    
+    detail_data = []
+    for task in top_tasks:
+        detail_data.append({
+            '태스크 키': task['task_key'],
+            '변동성 (%)': f"{task['variability'] * 100:.1f}%",
+            '예상 소요시간 (시간)': f"{task['estimated_duration']:.1f}",
+            '완료 확률 (%)': f"{task['completion_probability'] * 100:.1f}%"
+        })
+    
+    df_detail = pd.DataFrame(detail_data)
+    st.dataframe(df_detail, use_container_width=True)
+    
+    st.markdown("""
+    **🌪️ Tornado 차트 설명:**
+    - 각 태스크의 변동성이 프로젝트 전체에 미치는 영향을 보여줍니다
+    - **변동성**: 표준편차/평균 비율 (높을수록 예측 불확실성 높음)
+    - **상위 태스크**: 변동성이 높은 태스크들로, 프로젝트 리스크에 가장 큰 영향을 줍니다
+    - 이러한 태스크들에 대한 세부 분석과 모니터링이 필요합니다
+    """)
+
+def display_correlation_heatmap(result):
+    """태스크별 상관관계 히트맵을 표시합니다."""
+    st.subheader("🔥 태스크별 상관관계 분석")
+    
+    # 태스크별 분석 데이터 추출
+    task_analyses = result.get('taskAnalyses', {})
+    
+    if not task_analyses:
+        st.info("태스크별 상세 분석 데이터가 없습니다.")
+        return
+    
+    # 상관관계 분석을 위한 데이터 준비
+    task_keys = list(task_analyses.keys())
+    if len(task_keys) < 2:
+        st.info("상관관계 분석을 위해서는 최소 2개 이상의 태스크가 필요합니다.")
+        return
+    
+    # 실제 상관관계 데이터 사용
+    task_correlations = result.get('taskCorrelations', {})
+    
+    if not task_correlations:
+        st.info("상관관계 데이터가 없습니다.")
+        return
+    
+    # 상관관계 매트릭스 생성
+    n_tasks = len(task_keys)
+    correlation_matrix = np.zeros((n_tasks, n_tasks))
+    
+    for i, task1 in enumerate(task_keys):
+        for j, task2 in enumerate(task_keys):
+            if task1 in task_correlations and task2 in task_correlations[task1]:
+                correlation_matrix[i][j] = task_correlations[task1][task2]
+            else:
+                correlation_matrix[i][j] = 0.0
+    
+    # 히트맵 생성
+    fig = go.Figure(data=go.Heatmap(
+        z=correlation_matrix,
+        x=task_keys,
+        y=task_keys,
+        colorscale='RdBu',
+        zmid=0.5,
+        text=np.round(correlation_matrix, 2),
+        texttemplate="%{text}",
+        textfont={"size": 10},
+        hoverongaps=False
+    ))
+    
+    fig.update_layout(
+        title="태스크별 상관관계 히트맵",
+        xaxis_title="태스크",
+        yaxis_title="태스크",
+        height=500,
+        margin=dict(l=50, r=50, t=80, b=50)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("""
+    **🔥 상관관계 히트맵 설명:**
+    - 각 태스크 간의 상관관계를 색상으로 표시합니다
+    - **빨간색**: 높은 양의 상관관계 (태스크들이 함께 변동)
+    - **파란색**: 높은 음의 상관관계 (태스크들이 반대로 변동)
+    - **흰색**: 낮은 상관관계 (독립적인 태스크)
+    - 높은 상관관계를 가진 태스크들은 함께 관리해야 합니다
+    """)
+
+def display_sensitivity_analysis(result):
+    """민감도 분석 차트를 표시합니다."""
+    st.subheader("🎯 민감도 분석")
+    
+    # 태스크별 분석 데이터 추출
+    task_analyses = result.get('taskAnalyses', {})
+    
+    if not task_analyses:
+        st.info("태스크별 상세 분석 데이터가 없습니다.")
+        return
+    
+    # 민감도 지표 계산 (완료 확률과 변동성의 조합)
+    sensitivity_data = []
+    for task_key, analysis in task_analyses.items():
+        completion_prob = analysis.get('completionProbability', 0.5)
+        variability = analysis.get('variability', 0.5)
+        
+        # 민감도 점수 = (1 - 완료확률) * 변동성
+        sensitivity_score = (1 - completion_prob) * variability
+        
+        sensitivity_data.append({
+            'task_key': task_key,
+            'sensitivity_score': sensitivity_score,
+            'completion_probability': completion_prob,
+            'variability': variability,
+            'estimated_duration': analysis.get('estimatedDuration', 0)
+        })
+    
+    if not sensitivity_data:
+        st.info("민감도 분석 데이터가 충분하지 않습니다.")
+        return
+    
+    # 민감도 점수 기준으로 정렬
+    sensitivity_data.sort(key=lambda x: x['sensitivity_score'], reverse=True)
+    top_sensitive = sensitivity_data[:10]
+    
+    # 민감도 차트 생성
+    fig = go.Figure()
+    
+    task_names = [task['task_key'] for task in top_sensitive]
+    sensitivity_scores = [task['sensitivity_score'] * 100 for task in top_sensitive]
+    
+    fig.add_trace(go.Bar(
+        x=sensitivity_scores,
+        y=task_names,
+        orientation='h',
+        marker_color='darkred',
+        name='민감도 점수 (%)',
+        text=[f"{s:.1f}%" for s in sensitivity_scores],
+        textposition='auto'
+    ))
+    
+    fig.update_layout(
+        title="태스크별 민감도 분석 (상위 10개)",
+        xaxis_title="민감도 점수 (%)",
+        yaxis_title="태스크",
+        showlegend=False,
+        height=max(400, len(top_sensitive) * 40),
+        margin=dict(l=50, r=50, t=80, b=50)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # 상세 정보 테이블
+    st.subheader("📋 민감도 상세 정보")
+    
+    detail_data = []
+    for task in top_sensitive:
+        detail_data.append({
+            '태스크 키': task['task_key'],
+            '민감도 점수 (%)': f"{task['sensitivity_score'] * 100:.1f}%",
+            '완료 확률 (%)': f"{task['completion_probability'] * 100:.1f}%",
+            '변동성 (%)': f"{task['variability'] * 100:.1f}%",
+            '예상 소요시간 (시간)': f"{task['estimated_duration']:.1f}"
+        })
+    
+    df_detail = pd.DataFrame(detail_data)
+    st.dataframe(df_detail, use_container_width=True)
+    
+    st.markdown("""
+    **🎯 민감도 분석 설명:**
+    - **민감도 점수**: (1 - 완료확률) × 변동성
+    - 높은 민감도 점수는 해당 태스크가 프로젝트 전체에 큰 영향을 미침을 의미
+    - **완료 확률이 낮고 변동성이 높은 태스크**가 가장 민감한 태스크
+    - 이러한 태스크들은 우선적으로 모니터링하고 관리해야 합니다
     """)
 
 def display_risk_analysis(result):
